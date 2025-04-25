@@ -1,69 +1,22 @@
-```
-
-CREATE TABLE trade(
-    id bigint,
-    buyer_id integer,
-    symbol text,
-    order_quantity integer,
-    bid_price numeric(5,2),
-    order_time timestamp
-);
-```
-
-```bash
-\d
-```
+## Create database
 
 ```
-INSERT INTO trade (id, buyer_id, symbol, order_quantity, bid_price, order_time)
-    SELECT
-        id,
-        random(1,10) as buyer_id,
-        (array['AAPL','F','DASH'])[random(1,3)] as symbol,
-        random(1,20) as order_quantity,
-        round(random(10.00,20.00), 2) as bid_price,
-        now() as order_time
-    FROM generate_series(1,1000) AS id;
-
-SELECT count(*) FROM trade WHERE symbol = 'AAPL';
+CREATE DATABASE coffee_chain;
+CREATE DATABASE brewery;
+```
+## Connect to database
+```
+\c coffee_chain
 ```
 
-```bash
-EXPLAIN ANALYZE SELECT count(*) FROM trade WHERE symbol = 'AAPL';
-----------------------------------------------------------------------------------------------------------
- Aggregate  (cost=22.26..22.27 rows=1 width=8) (actual time=1.920..1.922 rows=1 loops=1)
-   ->  Seq Scan on trade  (cost=0.00..21.50 rows=305 width=0) (actual time=0.190..1.862 rows=305 loops=1)
-         Filter: (symbol = 'AAPL'::text)
-         Rows Removed by Filter: 695
- Planning Time: 0.298 ms
- Execution Time: 2.033 ms
-```
-
-Some queries
-```
-SELECT symbol, count(order_quantity) AS total_volume
-FROM trade
-GROUP BY symbol
-ORDER BY total_volume DESC;
-------------------------------------------------------
-SELECT buyer_id, sum(bid_price * order_quantity) AS total_value
-FROM trade
-GROUP BY buyer_id
-ORDER BY total_value DESC
-LIMIT 3;
-------------------------------------------------------
-
-```
-
-
+## Create schemas
 ```
 CREATE SCHEMA products;
 CREATE SCHEMA customers;
 CREATE SCHEMA sales;
-\dn
+```
 
-
-
+```
 CREATE TABLE products.catalog (  
     id SERIAL PRIMARY KEY, 
     name VARCHAR (100) NOT NULL, 
@@ -73,21 +26,6 @@ CREATE TABLE products.catalog (
     stock_quantity INT CHECK (stock_quantity >= 0)
 );            
 
-INSERT INTO products.catalog (name, description, category, price, stock_quantity)
-VALUES
-    ('Sunrise Blend', 'A smooth and balanced blend with notes of caramel and citrus.', 'coffee', 14.99, 50),
-    ('Midnight Roast', 'A dark roast with rich flavors of chocolate and toasted nuts.', 'coffee', 16.99, 40),
-    ('Morning Glory', 'A light roast with bright acidity and floral notes.', 'coffee', 13.99, 30),
-    ('Sunrise Brew Co. Mug', 'A ceramic mug with the Sunrise Brew Co. logo.', 'mug', 9.99, 100),
-    ('Sunrise Brew Co. T-Shirt', 'A soft cotton t-shirt with the Sunrise Brew Co. logo.', 't-shirt', 19.99, 25);
-
-ALTER TABLE products.catalog 
-    ADD CONSTRAINT catalog_price_check CHECK (price > 0);
-
-select id, name from products.catalog;
-```
-
-```
 CREATE TABLE products.review (  
     id BIGSERIAL PRIMARY KEY,  
     product_id INT,
@@ -96,15 +34,6 @@ CREATE TABLE products.review (
     rank SMALLINT 
 );
 
-ALTER TABLE products.review 
-    ALTER COLUMN review SET NOT NULL,
-    ADD CONSTRAINT review_rank_check CHECK (rank BETWEEN 1 AND 5);
-
-\d products.review
-```
-
-
-```
 CREATE TABLE customers.account (
     id SERIAL PRIMARY KEY,
     name TEXT NOT NULL,
@@ -112,10 +41,55 @@ CREATE TABLE customers.account (
     passwd_hash TEXT NOT NULL
 );
 
+```
+
+## Insert rows
+```
+INSERT INTO products.catalog (name, description, category, price, stock_quantity)
+VALUES
+    ('Sunrise Blend', 'A smooth and balanced blend with notes of caramel and citrus.', 'coffee', 14.99, 50),
+    ('Midnight Roast', 'A dark roast with rich flavors of chocolate and toasted nuts.', 'coffee', 16.99, 40),
+    ('Morning Glory', 'A light roast with bright acidity and floral notes.', 'coffee', 13.99, 30),
+    ('Sunrise Brew Co. Mug', 'A ceramic mug with the Sunrise Brew Co. logo.', 'mug', 9.99, 100),
+    ('Sunrise Brew Co. T-Shirt', 'A soft cotton t-shirt with the Sunrise Brew Co. logo.', 't-shirt', 19.99, 25);
+```
+
+## Constraint
+```
+ALTER TABLE products.catalog 
+    ADD CONSTRAINT catalog_price_check CHECK (price > 0);
+
+select id, name from products.catalog;
+
+\d products.review
+
+ALTER TABLE products.review 
+    ALTER COLUMN review SET NOT NULL,
+    ADD CONSTRAINT review_rank_check CHECK (rank BETWEEN 1 AND 5);
+
+ALTER TABLE products.review
+    ADD CONSTRAINT products_review_product_id_fk
+    FOREIGN KEY (product_id) REFERENCES products.catalog(id);
+
+```
+
+```
+
+ALTER TABLE products.review 
+    ALTER COLUMN review SET NOT NULL,
+    ADD CONSTRAINT review_rank_check CHECK (rank BETWEEN 1 AND 5);
+
+\d products.review
+
 
 ALTER TABLE products.review 
     ADD CONSTRAINT products_review_customer_id_fk
     FOREIGN KEY (customer_id) REFERENCES customers.account(id);
+```
+
+# Insert rows
+```
+
 
 
 INSERT INTO customers.account (name, email, passwd_hash)
@@ -124,6 +98,13 @@ VALUES
     ('Bob Smith', 'bob.smith@example.com', 'd8578edf8458ce06fbc5bb76a58c5ca4'), 
     ('Charlie Brown', 'charlie.brown@example.com', '5f4dcc3b5aa765d61d8327deb882cf99');
 
+
+INSERT INTO products.review (product_id, customer_id, review, rank)
+VALUES (4, 1, 'This mug is perfect — sturdy, stylish, and keeps my coffee warm for a good while.', 5);
+```
+
+
+```
 SELECT id, name FROM products.catalog WHERE name = 'Sunrise Brew Co. Mug';
 
 
@@ -191,6 +172,192 @@ GROUP BY c.id
 ORDER BY total_orders DESC
 LIMIT 3;
 ```
+```
+SELECT c.name 
+FROM customers.account c 
+LEFT JOIN sales.order s ON c.id = s.customer_id 
+WHERE s.customer_id IS NULL; 
+```
+```
+SELECT c.name, c.category, c.price, SUM(oi.quantity) AS total_sold
+FROM products.catalog c
+LEFT JOIN sales.order_item oi ON c.id = oi.product_id
+GROUP BY c.id
+ORDER BY total_sold DESC NULLS LAST, price DESC;
+```
+## Functions
+```
+CREATE OR REPLACE FUNCTION get_product_price(product_id INT) 
+RETURNS NUMERIC(10, 2) AS $$ 
+    SELECT price    
+    FROM products.catalog
+    WHERE id = product_id;
+$$ LANGUAGE sql;
+```
+```
+ALTER TABLE sales.order 
+ADD COLUMN status TEXT DEFAULT 'pending' CHECK (status in ('pending','ordered'));
+            
+UPDATE sales.order SET status = 'ordered';  
+            
+ALTER TABLE sales.order  
+ADD CONSTRAINT one_pending_order_per_customer
+EXCLUDE USING btree (customer_id WITH =)
+WHERE (status = 'pending');
+```
+```
+CREATE OR REPLACE FUNCTION order_add_item(customer_id_param INT, product_id_param INT, quantity_param INT)  
+RETURNS TABLE (order_id UUID, prod_id INT, quantity INT, prod_price DECIMAL) AS $$
+DECLARE
+    pending_order_id UUID;  
+BEGIN
+    SELECT id INTO pending_order_id  
+    FROM sales.order
+    WHERE customer_id = customer_id_param
+      AND status = 'pending'
+    LIMIT 1;
+        
+    IF pending_order_id IS NULL THEN  
+        INSERT INTO sales.order (customer_id, status)
+        VALUES (customer_id_param, 'pending')
+        RETURNING id INTO pending_order_id;
+    END IF;
+        
+    MERGE INTO sales.order_item AS oi  
+    USING (SELECT id, price FROM products.catalog WHERE id = product_id_param) AS prod
+    ON oi.product_id = prod.id AND oi.order_id = pending_order_id
+    WHEN MATCHED THEN
+        UPDATE SET quantity = quantity_param
+    WHEN NOT MATCHED THEN
+        INSERT (order_id, product_id, quantity, price)
+        VALUES (pending_order_id, prod.id, quantity_param, prod.price);
+        
+    RETURN QUERY  
+    SELECT oi.order_id, oi.product_id, oi.quantity, oi.price as prod_price
+    FROM sales.order_item as oi
+    WHERE oi.order_id = pending_order_id;
+END;
+$$ LANGUAGE plpgsql;
+```
+
+```
+SELECT * FROM order_add_item(
+    customer_id_param => 3,
+    product_id_param => 3,
+    quantity_param => 2
+    );
+```
+
+```
+CREATE OR REPLACE FUNCTION order_checkout(customer_id_param INT) 
+RETURNS TABLE (order_id UUID, customer_id INT, order_date timestamp, total_amount DECIMAL) AS $$
+DECLARE
+    pending_order_id UUID; 
+    final_total_amount DECIMAL := 0;
+BEGIN
+    SELECT id INTO pending_order_id 
+    FROM sales.order as o
+    WHERE o.customer_id = customer_id_param
+      AND status = 'pending'
+    LIMIT 1;
+        
+    IF pending_order_id IS NULL THEN 
+        RAISE EXCEPTION 'No pending order found for customer %', customer_id_param;
+    END IF;
+            
+    SELECT SUM(oi.quantity * oi.price) INTO final_total_amount 
+    FROM sales.order_item oi
+    WHERE oi.order_id = pending_order_id;
+        
+    UPDATE sales.order  
+    SET status = 'ordered',
+        total_amount = final_total_amount,
+        order_date = CURRENT_TIMESTAMP
+    WHERE id = pending_order_id;
+        
+    UPDATE products.catalog  
+    SET stock_quantity = stock_quantity - oi.quantity
+    FROM sales.order_item oi
+    WHERE products.catalog.id = oi.product_id
+      AND oi.order_id = pending_order_id;
+            
+    RETURN QUERY  
+    SELECT o.id, o.customer_id, o.order_date, o.total_amount
+    FROM sales.order as o
+    WHERE o.id = pending_order_id;
+END;
+$$ LANGUAGE plpgsql;
+```
+
+```
+SELECT id, name FROM customers.account WHERE name = 'Bob Smith';
+SELECT * FROM order_add_item(
+    customer_id_param => 2, 
+    product_id_param => 1, 
+    quantity_param => 1);
+
+```
+```
+CREATE OR REPLACE FUNCTION update_order_total()
+RETURNS TRIGGER AS $$
+BEGIN
+    UPDATE sales.order
+    SET total_amount = (  
+        SELECT COALESCE(SUM(oi.quantity * oi.price), 0)  
+        FROM sales.order_item oi
+        WHERE oi.order_id = COALESCE(NEW.order_id, OLD.order_id)  
+    )
+    WHERE id = COALESCE(NEW.order_id, OLD.order_id) AND status = 'pending';        
+    RETURN NEW;  
+END;
+$$ LANGUAGE plpgsql;
+```
+
+## Trigger
+```
+CREATE TRIGGER trigger_update_order_total
+AFTER INSERT OR UPDATE OR DELETE ON sales.order_item
+FOR EACH ROW
+EXECUTE FUNCTION update_order_total();
+```
 
 
+## Views
+```
+CREATE VIEW product_sales_summary AS  
+SELECT  
+    c.name AS product_name,
+    c.category,
+    SUM(oi.quantity) AS total_quantity_sold,
+    SUM(oi.quantity * oi.price) AS total_revenue
+FROM products.catalog c
+LEFT JOIN sales.order_item oi ON c.id = oi.product_id
+GROUP BY c.id
+ORDER BY total_quantity_sold DESC, total_revenue DESC;
+```
+```
+CREATE MATERIALIZED VIEW monthly_sales_summary AS
+SELECT 
+    date_trunc('month', o.order_date) AS sales_month,
+    SUM(oi.quantity * oi.price) AS total_revenue,
+    COUNT(DISTINCT(o.id)) AS total_orders
+FROM sales.order o
+JOIN sales.order_item oi ON o.id = oi.order_id
+GROUP BY sales_month
+ORDER BY sales_month;
+
+
+SELECT * FROM monthly_sales_summary;
+```
+
+## users & roles
+```
+CREATE ROLE coffee_chain_admin WITH LOGIN PASSWORD 'password'; 
+GRANT CONNECT ON DATABASE coffee_chain TO coffee_chain_admin; 
+REVOKE CONNECT ON DATABASE coffee_chain FROM PUBLIC; 
+
+
+REVOKE CONNECT ON DATABASE brewery FROM PUBLIC;
+REVOKE CONNECT ON DATABASE postgres FROM PUBLIC;
+```
 
